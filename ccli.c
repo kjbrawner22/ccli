@@ -293,35 +293,6 @@ static table_string *ccli_table_find_string(ccli_table *table, const char *chars
 
 // END FIX
 
-/******************** option_array ********************/
-/*
-typedef struct {
-  int size;
-  int capacity;
-  ccli_option **options;
-} option_array;
-static void option_array_init(option_array *array) {
-  array->capacity = 0;
-  array->size = 0;
-  array->options = NULL;
-}
-static void option_array_free(option_array *array) {
-  if (array->capacity > 0) {
-    for (int i = 0; i < array->size; i++) {
-      free(array->options[i]);
-    }
-    free(array->options);
-  }
-  option_array_init(array);
-}
-static void option_array_add(option_array *array, ccli_option *option) {
-  if (array->size + 1 > array->capacity) {
-    array->capacity = GROW_ARRAY_CAPACITY(array->capacity);
-    array->options = realloc(array->options, sizeof(ccli_option *) * array->capacity);
-  }
-  array->options[array->size++] = option;
-}
-*/
 /******************** ccli_command ********************/
 
 struct ccli_command {
