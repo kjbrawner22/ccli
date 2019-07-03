@@ -38,7 +38,7 @@ void ccli_set_output_stream(ccli *interface, FILE *fp);
 ccli_command *ccli_add_command(ccli *interface, char *command, ccli_command_callback callback);
 ccli_option *ccli_command_add_option(ccli_command *command, char *double_dash_option, 
                                char *single_dash_option, ccli_value_type type);
-void ccli_command_set_description(ccli_command *command, char *description);                               
+void ccli_command_set_description(ccli_command *command, char *description);
 void ccli_echo(ccli *interface, const char *format, ...);
 void ccli_echo_color(ccli *interface, ccli_color color, const char *format, ...);
 void ccli_run(ccli *interface);

@@ -132,7 +132,7 @@ static table_entry *ccli_table_find_entry(table_entry *entries, int capacity, ta
     table_entry *entry = &entries[index];
 
     if (entry->key == NULL) {
-      if (IS_NULL(entry->option->value)) {
+      if (entry->option == NULL) {
         // empty entry, return tombstone entry if found
         return (tombstone != NULL) ? tombstone : entry;
       } else {
@@ -152,12 +152,12 @@ static void ccli_table_adjust_capacity(ccli_table *table, int capacity) {
   table_entry *entries = malloc(sizeof(table_entry) * capacity);
   for (int i = 0; i < capacity; i++) {
     entries[i].key = NULL;
-    entries[i].option->value = NULL_VAL;
+    entries[i].option = NULL;
   }
 
   // don't copy over tombstones, reset and reconstruct the table
   table->count = 0;
-  for (int i = 0; i < capacity; i++) {
+  for (int i = 0; i < table->capacity; i++) {
     table_entry *entry = &table->entries[i];
 
     // disregard tombstones and empty slots
@@ -168,8 +168,11 @@ static void ccli_table_adjust_capacity(ccli_table *table, int capacity) {
     dest->option = entry->option;
     table->count++;
   }
+  
+  if (table->entries) {
+    free(table->entries);
+  }
 
-  free(table->entries);
   table->entries = entries;
   table->capacity = capacity;
 }
@@ -194,7 +197,7 @@ static bool ccli_table_set(ccli_table *table, table_string *key, ccli_option *op
 
   bool isNewKey = (entry->key == NULL);
   // increment count if it isn't a real value or a tombstone
-  if (isNewKey && IS_NULL(entry->option->value)) table->count++;
+  if (isNewKey && entry->option == NULL) table->count++;
 
   entry->key = key;
   entry->option = option;
@@ -350,6 +353,7 @@ static void command_array_add(command_array *array, ccli_command *command) {
 struct ccli {
   char *exeName;
   int argc;
+  int current_arg;
   char **argv;
   char *description;
   FILE *fp;
@@ -360,6 +364,7 @@ ccli *ccli_init(char *exeName, int argc, char **argv) {
   ccli *interface = malloc(sizeof(ccli));
   interface->exeName = exeName;
   interface->argc = argc;
+  interface->current_arg = 0;
   interface->argv = argv;
   interface->description = NULL;
   interface->fp = stdout;
@@ -451,7 +456,7 @@ void ccli_echo_color(ccli *interface, ccli_color color, const char *format, ...)
   if (interface->fp != stdout) {
     vfprintf(interface->fp, format, args);
     va_end(args);
-    fputc('\n', stdout);
+    fputc('\n', interface->fp);
     return;
   }
 
@@ -520,11 +525,71 @@ void ccli_help(ccli *interface, ccli_command *command) {
 static ccli_command *get_command(ccli *interface) {
   for (int i = 0; i < interface->commands.size; i++) {
     if (!strcmp(interface->argv[1], interface->commands.commands[i]->command)) {
+      interface->current_arg++;
       return interface->commands.commands[i];
     }
   }
 
   return NULL;
+}
+
+ccli_value get_arg(ccli *interface, ccli_value_type type) {
+  switch (type) {
+    case VAL_NULL: return NULL_VAL;
+    case VAL_BOOL: return BOOL_VAL(true);
+    case VAL_NUM: return NUM_VAL(-1);
+    case VAL_STRING: return STRING_VAL("test string.");
+    default: 
+      ccli_echo_color(interface, COLOR_RED, "Error: unrecognized value type: %d\n", type);
+      exit(1); // TODO: handle this more gracefully?
+  }
+}
+
+typedef struct {
+  bool is_long_option;
+  char *name;
+  int name_len;
+  char *val;
+} parsed_option;
+
+#define PARSED_OPTION(arg) ((parsed_option){ arg, 0, NULL })
+
+parsed_option parse_option(char *arg, bool is_long_option) {
+  parsed_option option = PARSED_OPTION(arg);
+  option.name_len++;
+  if (is_long_option) {
+    option.name_len++;
+  }
+
+
+  while (arg[option.name_len] != '\0') {
+    if (arg[option.name_len] == '=') {
+      option.val = (arg[option.name_len + 1] == '\0') ? "" : &arg[option.name_len + 1];
+      break;
+    }
+
+    option.name_len++;
+  }
+
+  return option;
+}
+
+void parse_options(ccli *interface, ccli_command *command) {
+  for (interface->current_arg; interface->current_arg < interface->argc; interface->current_arg++) {
+    char *arg = interface->argv[interface->current_arg];
+    if (!strncmp(arg, "--", 2)) {
+      // long option
+      parsed_option p_option = parse_option(arg, true);
+      ccli_option *option = NULL;
+      // TODO: finish parsing options
+      table_string *string = ccli_table_find_string(&command->options, arg);
+      if (string && ccli_table_get(&command->options, string, option)) {
+        // option was used
+        interface->current_arg++;
+        option->value = get_arg(interface, option->type);
+      } // TODO: handle short options
+    }
+  }
 }
 
 
@@ -541,6 +606,8 @@ void ccli_run(ccli *interface) {
     ccli_print(interface, "\n");
     return;
   }
+
+  parse_options(interface, command);
 
   command->callback(interface);
 }
