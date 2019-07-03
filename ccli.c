@@ -25,10 +25,12 @@ ccli_iterator *ccli_iterator_new() {
   return iterator;
 }
 
-// need a macro here so we can type-cast easily
+// NOTE: using a macro here to make type-cast more readable.
+// if we expose the opaque iterator object publicly, this won't
+// work.
 #define ccli_iterator_get(iter, type) ((type)iter->value)
 
-// the iterator passed to this function should be NULL.
+// the iterator passed to this function should most likely be NULL.
 // if not, its value will be replaced with the given value.
 //
 // Remember to maintain a pointer to the head of the iterator
