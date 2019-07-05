@@ -2,8 +2,12 @@
 
 #include "ccli.h"
 
-void hello(ccli *interface) {
+void hello(ccli *interface, ccli_table *options) {
   ccli_echo_color(interface, COLOR_GREEN, "Hello!");
+  int number;
+  if (ccli_table_get_int(options, "--number", &number)) {
+    ccli_echo_color(interface, COLOR_YELLOW, "number: %d", number);
+  }
 }
 
 void hello_setup(ccli *interface) {

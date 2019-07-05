@@ -26,11 +26,18 @@ typedef struct ccli_table ccli_table;
 typedef struct ccli_command ccli_command;
 typedef struct ccli_option ccli_option;
 
-typedef void (*ccli_command_callback)(ccli *interface);
+typedef void (*ccli_command_callback)(ccli *interface, ccli_table *options);
 
 ccli_value *ccli_int(int value);
 ccli_value *ccli_bool(bool value);
 ccli_value *ccli_string(char *string);
+
+// returns true if the option was specified in the command
+bool ccli_table_exists(ccli_table *table, char *option);
+bool ccli_table_get_int(ccli_table *table, char *option, int *value);
+bool ccli_table_get_double(ccli_table *table, char *option, double *value);
+bool ccli_table_get_bool(ccli_table *table, char *option, bool *value);
+
 
 ccli *ccli_init(char *exeName, int argc, char **argv);
 void ccli_set_description(ccli *interface, char *description);

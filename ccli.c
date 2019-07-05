@@ -46,12 +46,12 @@ static void ccli_iterator_add(ccli_iterator *iterator, void *value) {
 }
 
 // return true if there's another iteration
-static bool ccli_iterator_next(ccli_iterator *iterator) {
-  if (!iterator) return false;
+static bool ccli_iterator_next(ccli_iterator **iterator) {
+  if (!*iterator) return false;
   
-  ccli_iterator *next = iterator->next;
-  free(iterator);
-  iterator = next;
+  ccli_iterator *next = (*iterator)->next;
+  free(*iterator);
+  *iterator = next;
   
   return next != NULL;
 }
@@ -74,7 +74,16 @@ struct ccli_value {
 #define NUM_VAL(value)    ((ccli_value){ VAL_NUM,    { .number = (double)value } })
 #define STRING_VAL(value) ((ccli_value){ VAL_STRING, { .string = value }})
 
-#define IS_NULL(value)  ((value).type == VAL_NULL)
+#define IS_NULL(value)    ((value).type == VAL_NULL)
+#define IS_NUM(value)     ((value).type == VAL_NUM)
+#define IS_BOOL(value)    ((value).type == VAL_BOOL)
+#define IS_STRING(value)  ((value).type == VAL_STRING)
+
+#define AS_INT(value)     ((int)((value).as.number))
+#define AS_DOUBLE(value)  ((value).as.number)
+#define AS_BOOL(value)    ((value).as.boolean)
+#define AS_STRING(value)  ((value).as.string)
+
 
 ccli_value *ccli_int(int value) {
   ccli_value *_value = malloc(sizeof(ccli_value));
@@ -216,21 +225,19 @@ static void ccli_table_adjust_capacity(ccli_table *table, int capacity) {
     table->count++;
   }
   
-  if (table->entries) {
-    free(table->entries);
-  }
+  free(table->entries);
 
   table->entries = entries;
   table->capacity = capacity;
 }
 
-bool ccli_table_get(ccli_table *table, table_string *key, ccli_option *option) {
+bool ccli_table_get(ccli_table *table, table_string *key, ccli_option **option) {
   if (!table->entries) return false;
 
   table_entry *entry = ccli_table_find_entry(table->entries, table->capacity, key);
   if (!entry->key) return false;
 
-  option = entry->option;
+  *option = entry->option;
   return true;
 }
 
@@ -259,9 +266,13 @@ static ccli_iterator *ccli_table_values(ccli_table *table) {
   ccli_iterator *iter = head;
   table_entry *entry = table->entries;
   for (int i = 0; i < table->capacity; i++) {
-    if (entry[i]->key) {
-      ccli_iterator_add(iter, entry[i]->option);
+    if (entry[i].key) {
+      ccli_iterator_add(iter, entry[i].option);
     }
+  }
+
+  if (!head->value) {
+    free(head); return NULL;
   }
   
   return head;
@@ -292,6 +303,55 @@ static table_string *ccli_table_find_string(ccli_table *table, const char *chars
 }
 
 // END FIX
+
+bool ccli_table_exists(ccli_table *table, char *name) {
+  ccli_option *option = NULL;
+  table_string *string = ccli_table_find_string(table, name);
+  if (string && ccli_table_get(table, string, &option)) {
+    return true;
+  }
+
+  return false;
+}
+
+bool ccli_table_get_int(ccli_table *table, char *name, int *value) {
+  ccli_option *option = NULL;
+  table_string *string = ccli_table_find_string(table, name);
+  if (string && ccli_table_get(table, string, &option)) {
+    if (IS_NUM(option->value)) {
+      *value = AS_INT(option->value);
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool ccli_table_get_double(ccli_table *table, char *name, double *value) {
+  ccli_option *option = NULL;
+  table_string *string = ccli_table_find_string(table, name);
+  if (string && ccli_table_get(table, string, &option)) {
+    if (IS_NUM(option->value)) {
+      *value = AS_DOUBLE(option->value);
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool ccli_table_get_bool(ccli_table *table, char *name, bool *value) {
+  ccli_option *option = NULL;
+  table_string *string = ccli_table_find_string(table, name);
+  if (string && ccli_table_get(table, string, &option)) {
+    if (IS_BOOL(option->value)) {
+      *value = AS_BOOL(option->value);
+      return true;
+    }
+  }
+
+  return false;
+}
 
 /******************** ccli_command ********************/
 
@@ -327,13 +387,12 @@ ccli_option *ccli_command_add_option(ccli_command *command, char *double_dash_op
   //TODO: implement global options
   if (!command || !double_dash_option) return NULL;
   
-  ccli_option *option = ccli_option_new(double_dash_option, single_dash_option, 
-                                        (type) ? type : VAL_BOOL);
+  ccli_option *option = ccli_option_new(double_dash_option, single_dash_option, type);
   
   table_string *string = ccli_table_find_string(&command->options, double_dash_option);
   ccli_table_set(&command->options, (string) ? string : table_string_new(double_dash_option), option);
 
-  if (single_dash_option != NULL) {
+  if (single_dash_option) {
     string = ccli_table_find_string(&command->options, single_dash_option);
     ccli_table_set(&command->options, (string) ? string : table_string_new(single_dash_option), option);
   }
@@ -392,7 +451,7 @@ ccli *ccli_init(char *exeName, int argc, char **argv) {
   ccli *interface = malloc(sizeof(ccli));
   interface->exeName = exeName;
   interface->argc = argc;
-  interface->current_arg = 0;
+  interface->current_arg = 1;
   interface->argv = argv;
   interface->description = NULL;
   interface->fp = stdout;
@@ -512,40 +571,61 @@ void ccli_echo_color(ccli *interface, ccli_color color, const char *format, ...)
 
 static void ccli_option_display(ccli *interface, ccli_option *option) {
   // must supply a long (--double-dash) option
-  ccli_print_color(interface, COLOR_YELLOW, "%s", option->double_dash_option);
+  ccli_print_color(interface, COLOR_YELLOW, "  %s", option->long_option);
   
-  if (option->single_dash_option) {
-    ccli_print_color(interface, COLOR_YELLOW, ", %s", option->single_dash_option);
+  /*
+  if (option->short_option) {
+    ccli_print_color(interface, COLOR_YELLOW, ", %s", option->short_option);
   }
-  
-  if (option->type != VAL_NULL) {
-    ccli_print_color(interface, COLOR_CYAN, " : //TODO: finish");
-  }
-  
+  */
+
   if (option->description) {
-    ccli_print_color(interface, COLOR_YELLOW, " -> %s", option->description);
+    ccli_print_color(interface, COLOR_YELLOW, " -> %s\n", option->description);
+  }
+
+  if (option->type != VAL_NULL) {
+    switch (option->type) {
+      case VAL_NUM:    ccli_print_color(interface, COLOR_CYAN, "=NUMBER"); break;
+      case VAL_BOOL:   ccli_print_color(interface, COLOR_YELLOW, "=BOOLEAN"); break;
+      case VAL_STRING: ccli_print_color(interface, COLOR_YELLOW, "=STRING"); break;
+    }
   }
   
-  ccli_print(interface, "\n");
+  ccli_print(interface, "\n\n");
 }
 
 static void ccli_display_options(ccli *interface, ccli_command *command) {
   ccli_iterator *values = ccli_table_values(&command->options);
   
+  if (!values) return;
+
+  ccli_echo_color(interface, COLOR_YELLOW, "Options:");
+
   while (values) {
     ccli_option *option = ccli_iterator_get(values, ccli_option *);
     ccli_option_display(interface, option);
-    ccli_iterator_next(values);
+    ccli_iterator_next(&values);
   }
 }
 
 // END NEW
 
+static void ccli_detailed_command_display(ccli *interface, ccli_command *command) {
+  ccli_echo_color(interface, COLOR_YELLOW, "Usage: ./%s %s [OPTIONS]\n", interface->exeName, command->command);
+
+  if (command->description) {
+    ccli_echo_color(interface, COLOR_YELLOW, "  %s\n", command->description);
+  }
+
+  ccli_display_options(interface, command);
+}
+
 static void ccli_command_display(ccli *interface, ccli_command *command) {
   ccli_print_color(interface, COLOR_YELLOW, "%s", command->command);
   if (command->description) {
-    ccli_print_color(interface, COLOR_YELLOW, " -> %s\n", command->description);
+    ccli_print_color(interface, COLOR_YELLOW, " -> %s", command->description);
   }
+  ccli_print(interface, "\n");
 }
 
 static void ccli_display_commands(ccli *interface) {
@@ -556,9 +636,13 @@ static void ccli_display_commands(ccli *interface) {
   }
 }
 
+static void ccli_usage(ccli *interface) {
+  ccli_echo_color(interface, COLOR_YELLOW, "Usage: ./%s [command] [options]\n", interface->exeName);
+}
+
 static void ccli_display(ccli *interface) {
 
-  ccli_echo_color(interface, COLOR_YELLOW, "Usage: ./%s [command] [options]\n", interface->exeName);
+  ccli_usage(interface);
 
   if (interface->description) {
     ccli_echo_color(interface, COLOR_YELLOW, "  %s\n", interface->description);
@@ -594,18 +678,6 @@ static ccli_command *get_command(ccli *interface) {
   return NULL;
 }
 
-ccli_value get_arg(ccli *interface, ccli_value_type type) {
-  switch (type) {
-    case VAL_NULL: return NULL_VAL;
-    case VAL_BOOL: return BOOL_VAL(true);
-    case VAL_NUM: return NUM_VAL(-1);
-    case VAL_STRING: return STRING_VAL("test string.");
-    default: 
-      ccli_echo_color(interface, COLOR_RED, "Error: unrecognized value type: %d\n", type);
-      exit(1); // TODO: handle this more gracefully?
-  }
-}
-
 // FIX
 
 typedef struct {
@@ -627,6 +699,43 @@ static char *copy_chars(char *chars, int length) {
   return string;
 }
 
+bool is_digit(char c) {
+  return (c >= 0 && c <= 9);
+}
+
+void set_option_value(ccli *interface, ccli_command *command, ccli_option *option, char *value) {
+  switch (option->type) {
+    case VAL_NULL: {
+      option->value = NULL_VAL; 
+      break;
+    }
+    case VAL_BOOL: {
+      option->value = BOOL_VAL(true); 
+      break;
+    }
+    case VAL_NUM: {
+      if (value && 
+          (is_digit(value[0]) || 
+        (strlen(value) > 1 && value[0] == '-' && is_digit(value[1])))) {
+        option->value = NUM_VAL(strtod(value, NULL));
+      } else {
+        ccli_detailed_command_display(interface, command);
+        ccli_echo_color(interface, COLOR_RED, "Error: invalid number: %s", value);
+        exit(1);
+      } 
+      break;
+      printf("end val num\n");
+    }
+    case VAL_STRING: {
+      option->value = STRING_VAL("test string."); 
+      break;
+    }
+    default: 
+      ccli_echo_color(interface, COLOR_RED, "Error: unrecognized value type: %d\n", option->type);
+      exit(1); // TODO: handle this more gracefully?
+  }
+}
+
 parsed_option parse_option(char *arg) {
   if (arg[0] != '-') return parsed_option_new(NULL, NULL);
   
@@ -636,33 +745,31 @@ parsed_option parse_option(char *arg) {
   name_len++; name_len++;
   
   while (arg[name_len] != '\0' && arg[name_len] != '=') {
-    option.name_len++;
+    name_len++;
   }
   
   if (arg[name_len] == '=') {
     return parsed_option_new(copy_chars(arg, name_len), &arg[name_len + 1]);
   } else {
-    return parsed_option_new(arg, NULL);
+    return parsed_option_new(copy_chars(arg, name_len), NULL);
   }
-
-  return option;
 }
 
 #undef parsed_option_new
 
 void parse_options(ccli *interface, ccli_command *command) {
   parsed_option p_option;
-  for (interface->current_arg; interface->current_arg < interface->argc; interface->current_arg++) {
+  for (; interface->current_arg < interface->argc; interface->current_arg++) {
     p_option = parse_option(interface->argv[interface->current_arg]);
     if (!p_option.name) return;
     
     ccli_option *option = NULL;
     // TODO: finish parsing options
-    table_string *string = ccli_table_find_string(&command->options, NULL);
-    if (string && ccli_table_get(&command->options, string, option)) {
+    table_string *string = ccli_table_find_string(&command->options, p_option.name);
+    if (string && ccli_table_get(&command->options, string, &option)) {
       // option was used
       interface->current_arg++;
-      option->value = get_arg(interface, option->type);
+      set_option_value(interface, command, option, p_option.val);
     }
     
     parsed_option_free(&p_option);
@@ -673,7 +780,7 @@ void parse_options(ccli *interface, ccli_command *command) {
 
 
 void ccli_run(ccli *interface) {
-  if (interface->argc <= 1 || !strcmp(interface->argv[1], "--help")) {
+  if (interface->argc <= 1 || !strcmp(interface->argv[interface->current_arg], "--help")) {
     ccli_help(interface, NULL);
     return;
   }
@@ -687,6 +794,5 @@ void ccli_run(ccli *interface) {
   }
 
   parse_options(interface, command);
-
-  command->callback(interface);
+  command->callback(interface, &command->options);
 }
