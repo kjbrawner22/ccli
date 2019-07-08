@@ -172,8 +172,14 @@ void ccli_table_init(ccli_table *table) {
 }
 
 void ccli_table_free(ccli_table *table) {
+  for (int i = 0; i < table->capacity; i++) {
+    table_string *string = table->entries[i].key;
+    ccli_option *option = table->entries[i].option;
+    if (string) free(string);
+    if (option) free(option);
+  }
+  
   free(table->entries);
-
   ccli_table_init(table);
 }
 
