@@ -21,10 +21,15 @@ void hello_callback(ccli *interface, ccli_table *options) {
 
 void hello_command(ccli *interface) {
   ccli_command *hello = ccli_add_command(interface, "hello", hello_callback);
-  ccli_command_add_option(hello, "--number", NULL, VAL_NUM);
+  ccli_command_set_description(hello, "Say hello, and use some random options!");
+
+  ccli_option *number = ccli_command_add_option(hello, "--number", NULL, VAL_NUM);
+  ccli_option_set_default_number(number, 3);
   ccli_command_add_option(hello, "--string", NULL, VAL_STRING);
   ccli_command_add_option(hello, "--bool", NULL, VAL_BOOL);
   ccli_command_add_option(hello, "--flag", NULL, VAL_NULL);
+
+  ccli_command_add_bool_arg(hello, "test_arg");
 }
 
 int main(int argc, char **argv) {

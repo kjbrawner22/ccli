@@ -59,14 +59,14 @@ static bool ccli_iterator_done(ccli_iterator *iterator) {
 
 /******************** ccli_value ********************/
 
-struct ccli_value {
+typedef struct {
   ccli_value_type type;
   union {
     double number;
     bool boolean;
     char *string;
   } as;
-};
+} ccli_value;
 
 #define NULL_VAL          ((ccli_value){ VAL_NULL,   { .number = 0 } })
 #define BOOL_VAL(value)   ((ccli_value){ VAL_BOOL,   { .boolean = value } })
@@ -83,35 +83,18 @@ struct ccli_value {
 #define AS_BOOL(value)    ((value).as.boolean)
 #define AS_STRING(value)  ((value).as.string)
 
-
-ccli_value *ccli_int(int value) {
-  ccli_value *_value = malloc(sizeof(ccli_value));
-  *_value = NUM_VAL(value);
-  return _value;
-}
-
-ccli_value *ccli_bool(bool value) {
-  ccli_value *_value = malloc(sizeof(ccli_value));
-  *_value = BOOL_VAL(value);
-  return _value;
-}
-
-ccli_value *ccli_string(char *string) {
-  ccli_value *_value = malloc(sizeof(ccli_value));
-  *_value = STRING_VAL(string);
-  return _value;
-}
-
 /******************** ccli_arg ********************/
 
 struct ccli_arg {
+  char *name;
   char *description;
   ccli_value_type type;
   ccli_value value;
 };
 
-static ccli_arg *ccli_arg_new(ccli_value_type type) {
+static ccli_arg *ccli_arg_new(char *name, ccli_value_type type) {
   ccli_arg *arg = malloc(sizeof(ccli_arg));
+  arg->name = name;
   arg->description = NULL;
   arg->type = type;
   arg->value = NULL_VAL;
@@ -119,7 +102,7 @@ static ccli_arg *ccli_arg_new(ccli_value_type type) {
 }
 
 // might need this helper later, rather than just a wrapper
-// around a [free] call
+// around a free call
 static void ccli_arg_free(ccli_arg *arg) {
   free(arg);
 }
@@ -183,6 +166,30 @@ static ccli_option *ccli_option_new(char *double_dash_option, char *single_dash_
 
 void ccli_option_set_description(ccli_option *option, char *description) {
   option->description = description;
+}
+
+void ccli_option_set_default_number(ccli_option *option, double value) {
+  if (option->type != VAL_NUM) {
+    // error
+  }
+
+  option->value = NUM_VAL(value);
+}
+
+void ccli_option_set_default_bool(ccli_option *option, bool value) {
+  if (option->type != VAL_BOOL) {
+    // error
+  }
+
+  option->value = BOOL_VAL(value);
+}
+
+void ccli_option_set_default_string(ccli_option *option, char *value) {
+  if (option->type != VAL_STRING) {
+    // error
+  }
+
+  option->value = STRING_VAL(value);
 }
 
 /******************** ccli_table ********************/
@@ -429,6 +436,7 @@ struct ccli_command {
   char *description;
   ccli_command_callback callback;
   ccli_table options;
+  arg_array args;
 };
 
 static ccli_command *ccli_command_new(char *command, ccli_command_callback callback) {
@@ -437,11 +445,13 @@ static ccli_command *ccli_command_new(char *command, ccli_command_callback callb
   _command->description = NULL;
   _command->callback = callback;
   ccli_table_init(&_command->options);
+  arg_array_init(&_command->args);
   return _command;
 }
 
 static void ccli_command_free(ccli_command *command) {
   ccli_table_free(&command->options);
+  arg_array_free(&command->args);
   free(command);
 }
 
@@ -449,9 +459,28 @@ void ccli_command_set_description(ccli_command *command, char *description) {
   command->description = description;
 }
 
+ccli_arg *ccli_command_add_number_arg(ccli_command *command, char *name) {
+  ccli_arg *arg = ccli_arg_new(name, VAL_NUM);
+  arg_array_add(&command->args, arg);
+  return arg;
+}
+
+ccli_arg *ccli_command_add_bool_arg(ccli_command *command, char *name) {
+  ccli_arg *arg = ccli_arg_new(name, VAL_BOOL);
+  arg_array_add(&command->args, arg);
+  return arg;
+}
+
+ccli_arg *ccli_command_add_string_arg(ccli_command *command, char *name) {
+  ccli_arg *arg = ccli_arg_new(name, VAL_STRING);
+  arg_array_add(&command->args, arg);
+  return arg;
+}
+
 ccli_option *ccli_command_add_option(ccli_command *command, char *double_dash_option,
                              char *single_dash_option, ccli_value_type type) {
-  //TODO: implement global options
+  // TODO: implement global options
+  // TODO: allow single dash options on their own, too
   if (!command || !double_dash_option) return NULL;
 
   ccli_option *option = ccli_option_new(double_dash_option, single_dash_option, type);
@@ -632,6 +661,12 @@ void ccli_echo_color(ccli *interface, ccli_color color, const char *format, ...)
   fputc('\n', interface->fp);
 }
 
+#define ccli_error(interface, format, args...)           \
+  do {                                                   \
+    ccli_echo_color(interface, COLOR_RED, format, args); \
+    exit(1);                                             \
+  } while (false)
+
 static void ccli_option_display(ccli *interface, ccli_option *option) {
   // must supply a long (--double-dash) option
   ccli_print_color(interface, COLOR_YELLOW, "  %s", option->long_option);
@@ -675,14 +710,29 @@ static void ccli_display_options(ccli *interface, ccli_command *command) {
   ccli_print(interface, "\n");
 }
 
+static void ccli_arg_display(ccli *interface, ccli_arg *arg) {
+
+}
+
+static void ccli_display_args(ccli *interface, ccli_command *command) {
+
+}
+
 static void ccli_detailed_command_display(ccli *interface, ccli_command *command) {
-  ccli_echo_color(interface, COLOR_YELLOW, "Usage: ./%s %s [OPTIONS]\n", interface->exeName, command->command);
+  ccli_print_color(interface, COLOR_YELLOW, "Usage: ./%s %s [OPTIONS]", interface->exeName, command->command);
+
+  for (int i = 0; i < command->args.size; i++) {
+    ccli_print_color(interface, COLOR_YELLOW, " <%s>", command->args.args[i]->name);
+  }
+
+  ccli_print(interface, "\n\n");
 
   if (command->description) {
     ccli_echo_color(interface, COLOR_YELLOW, "  %s\n", command->description);
   }
 
   ccli_display_options(interface, command);
+  ccli_display_args(interface, command);
 }
 
 static void ccli_command_display(ccli *interface, ccli_command *command) {
@@ -777,6 +827,19 @@ bool is_number(char *value) {
   } else return false;
 }
 
+bool is_bool(char *value) {
+  return (!strcasecmp(value, "t") ||
+          !strcasecmp(value, "f") ||
+          !strcasecmp(value, "true") ||
+          !strcasecmp(value, "false"));
+}
+
+// returns the boolean represented by [value].
+// returns false if the value isn't valid.
+bool strtobool(char *value) {
+  return (!strcasecmp(value, "true") || !strcasecmp(value, "t"));
+}
+
 void set_option_value(ccli *interface, ccli_command *command, ccli_option *option, char *name, char *value) {
   if (!value) {
     if (option->type == VAL_NULL) {
@@ -796,10 +859,8 @@ void set_option_value(ccli *interface, ccli_command *command, ccli_option *optio
       exit(1);
     }
     case VAL_BOOL: {
-      if (!strcmp(value, "true") || !strcmp(value, "True")) {
-        option->value = BOOL_VAL(true);
-      } else if (!strcmp(value, "false") || !strcmp(value, "False")) {
-        option->value = BOOL_VAL(false);
+      if (is_bool(value)) {
+        option->value = BOOL_VAL(strtobool(value));
       } else {
         ccli_detailed_command_display(interface, command);
         ccli_echo_color(interface, COLOR_RED, "Error: invalid boolean: '%s'.", value);
@@ -850,7 +911,9 @@ parsed_option parse_option(char *arg) {
 
 void parse_options(ccli *interface, ccli_command *command) {
   parsed_option p_option;
-  for (; interface->current_arg < interface->argc; interface->current_arg++) {
+  for (; interface->current_arg < interface->argc &&
+         interface->argv[interface->current_arg][0] == '-';
+         interface->current_arg++) {
     p_option = parse_option(interface->argv[interface->current_arg]);
     if (!p_option.name) return;
 
@@ -863,6 +926,63 @@ void parse_options(ccli *interface, ccli_command *command) {
     }
 
     parsed_option_free(&p_option);
+  }
+}
+
+static void parse_arg(ccli *interface, ccli_command *command, ccli_arg *arg, char *value) {
+  switch (arg->type) {
+    case VAL_NUM: {
+      if (is_number(value)) {
+        arg->value = NUM_VAL(strtod(value, NULL));
+      } else {
+        ccli_detailed_command_display(interface, command);
+        ccli_echo_color(interface, COLOR_RED, "Error: invalid number: '%s'.", value);
+        exit(1);
+      }
+      break;
+    }
+    case VAL_BOOL: {
+      if (is_bool(value)) {
+        arg->value = BOOL_VAL(strtobool(value));
+      } else {
+        ccli_detailed_command_display(interface, command);
+        ccli_echo_color(interface, COLOR_RED, "Error: invalid boolean: '%s'.", value);
+        exit(1);
+      }
+      break;
+    }
+    case VAL_STRING: {
+      arg->value = STRING_VAL(value);
+      break;
+    }
+    default: {
+      // Should be unreachable
+      ccli_detailed_command_display(interface, command);
+      ccli_echo_color(interface, COLOR_RED, "Error: invalid value type: %d.", arg->type);
+      exit(1);
+      break;
+    }
+  }
+}
+
+static void parse_args(ccli *interface, ccli_command *command) {
+  // short-circuit for commands with no arguments
+  if (command->args.size == 0) return;
+
+  int num_ccli_args = 0;
+  for (; interface->current_arg < interface->argc && num_ccli_args < command->args.size;
+         interface->current_arg++, num_ccli_args++) {
+    ccli_arg *arg = command->args.args[num_ccli_args];
+    char *value = interface->argv[interface->current_arg];
+    parse_arg(interface, command, arg, value);
+  }
+
+  if (num_ccli_args < command->args.size) {
+    // arguments are required
+    ccli_detailed_command_display(interface, command);
+    ccli_error(interface, "Error: command requires %d arguments, but %d were specified.",
+               command->args.size, num_ccli_args);
+    exit(1);
   }
 }
 
@@ -881,5 +1001,11 @@ void ccli_run(ccli *interface) {
   }
 
   parse_options(interface, command);
+  parse_args(interface, command);
+
+  // TODO: expose arguments somehow to the callback
+  //
+  //       maybe hand a pointer over to the interface, then create
+  //       global endpoint like `ccli_get_argument(ccli *interface, int index)`
   command->callback(interface, &command->options);
 }
