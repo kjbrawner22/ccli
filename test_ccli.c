@@ -4,6 +4,7 @@ void hello_callback(ccli *interface, ccli_table *options) {
   ccli_echo_color(interface, COLOR_GREEN, "Hello!");
   int number;
   bool boolean;
+  char *string;
   if (ccli_table_get_int(options, "--number", &number)) {
     ccli_echo_color(interface, COLOR_YELLOW, "number: %d", number);
   }
@@ -12,6 +13,9 @@ void hello_callback(ccli *interface, ccli_table *options) {
   }
   if (ccli_table_exists(options, "--flag")) {
     ccli_echo_color(interface, COLOR_CYAN, "flag exists");
+  }
+  if (ccli_table_get_string(options, "--string", &string)) {
+    ccli_echo(interface, "string: %s", string);
   }
 }
 

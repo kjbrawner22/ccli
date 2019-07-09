@@ -20,11 +20,12 @@ typedef enum {
   VAL_STRING
 } ccli_value_type;
 
-typedef struct ccli ccli;
-typedef struct ccli_value ccli_value;
-typedef struct ccli_table ccli_table;
+typedef struct ccli         ccli;
+typedef struct ccli_value   ccli_value;
+typedef struct ccli_table   ccli_table;
 typedef struct ccli_command ccli_command;
-typedef struct ccli_option ccli_option;
+typedef struct ccli_arg     ccli_arg;
+typedef struct ccli_option  ccli_option;
 
 typedef void (*ccli_command_callback)(ccli *interface, ccli_table *options);
 
@@ -37,13 +38,16 @@ bool ccli_table_exists(ccli_table *table, char *option);
 bool ccli_table_get_int(ccli_table *table, char *option, int *value);
 bool ccli_table_get_double(ccli_table *table, char *option, double *value);
 bool ccli_table_get_bool(ccli_table *table, char *option, bool *value);
-
+bool ccli_table_get_string(ccli_table *table, char *name, char **value);
 
 ccli *ccli_init(char *exeName, int argc, char **argv);
 void ccli_set_description(ccli *interface, char *description);
 void ccli_set_output_stream(ccli *interface, FILE *fp);
 ccli_command *ccli_add_command(ccli *interface, char *command, ccli_command_callback callback);
-ccli_option *ccli_command_add_option(ccli_command *command, char *double_dash_option, 
+
+//TODO: replace with functions for each value type, rather than exposing the enumeration.
+//      reduces possibility for errors and makes the interface a little cleaner
+ccli_option *ccli_command_add_option(ccli_command *command, char *double_dash_option,
                                char *single_dash_option, ccli_value_type type);
 void ccli_command_set_description(ccli_command *command, char *description);
 void ccli_echo(ccli *interface, const char *format, ...);
