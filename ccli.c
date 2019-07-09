@@ -102,6 +102,61 @@ ccli_value *ccli_string(char *string) {
   return _value;
 }
 
+/******************** ccli_arg ********************/
+
+struct ccli_arg {
+  char *description;
+  ccli_value_type type;
+  ccli_value value;
+}
+
+static ccli_arg *ccli_arg_new(ccli_value_type type) {
+  ccli_arg *arg = malloc(sizeof(ccli_arg));
+  arg->description = NULL;
+  arg->type = type;
+  arg->value = NULL_VAL;
+  return arg;
+}
+
+// might need this helper later, rather than just a wrapper
+// around a [free] call
+static void ccli_arg_free(ccli_arg *arg) {
+  free(arg);
+}
+
+/******************** arg_array ********************/
+
+typedef struct {
+  int size;
+  int capacity;
+  ccli_command **args;
+} arg_array;
+
+static void arg_array_init(arg_array *array) {
+  array->size = 0;
+  array->capacity = 0;
+  array->args = NULL;
+}
+
+static void arg_array_free(arg_array *array) {
+  for (int i = 0; i < array->size; i++) {
+    ccli_arg_free(array->args[i]);
+  }
+
+  free(array->args);
+
+  arg_array_init(array);
+}
+
+static void arg_array_add(arg_array *array, ccli_arg *arg) {
+  if (array->size + 1 > array->capacity) {
+    array->capacity = GROW_ARRAY_CAPACITY(array->capacity);
+    array->args = realloc(array->args, sizeof(ccli_arg *) * array->capacity);
+  }
+
+  array->args[array->size++] = arg;
+}
+
 /******************** ccli_option ********************/
 
 struct ccli_option {
