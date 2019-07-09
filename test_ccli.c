@@ -17,6 +17,8 @@ void hello_callback(ccli *interface, ccli_table *options) {
   if (ccli_table_get_string(options, "--string", &string)) {
     ccli_echo(interface, "string: %s", string);
   }
+
+  ccli_echo(interface, "test_arg: %s", ccli_get_bool_arg(interface, 0) ? "true" : "false");
 }
 
 void hello_command(ccli *interface) {

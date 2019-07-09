@@ -34,7 +34,8 @@ void ccli_run(ccli *interface);
 void ccli_set_description(ccli *interface, char *description);
 void ccli_set_output_stream(ccli *interface, FILE *fp);
 
-// functions for retrieving option values
+// functions for retrieving option values.
+//
 // returns true if the option was specified in the command,
 // and is of the appropriate type
 bool ccli_table_exists(ccli_table *options, char *option);
@@ -42,6 +43,14 @@ bool ccli_table_get_int(ccli_table *options, char *option, int *value);
 bool ccli_table_get_double(ccli_table *options, char *option, double *value);
 bool ccli_table_get_bool(ccli_table *options, char *option, bool *value);
 bool ccli_table_get_string(ccli_table *options, char *name, char **value);
+
+// functions for retrieving argument values.
+//
+// fails if you try to get an inappropriate type from an argument.
+int ccli_get_int_arg(ccli *interface, int index);
+double ccli_get_double_arg(ccli *interface, int index);
+bool ccli_get_bool_arg(ccli *interface, int index);
+char *ccli_get_string_arg(ccli *interface, int index);
 
 ccli_command *ccli_add_command(ccli *interface, char *command, ccli_command_callback callback);
 void ccli_command_set_description(ccli_command *command, char *description);
