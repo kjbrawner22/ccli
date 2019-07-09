@@ -7,6 +7,16 @@
 
 #include "ccli.h"
 
+//TODO:
+// - add pointer for current command and its options to main ccli interface,
+//   then migrate ccli_table_get_* functions to use main interface
+// - command groups (like Click) for subcommands
+// - global options
+
+
+// POSSIBLE FEATURES:
+// - prompt user for input on arguments/options
+
 #define GROW_ARRAY_CAPACITY(cap) ((cap == 0) ? 8 : (cap) * 2)
 
 /******************** ccli_iterator ********************/
