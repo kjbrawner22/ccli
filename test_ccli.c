@@ -1,21 +1,33 @@
-#include <string.h>
-
 #include "ccli.h"
 
-void hello(ccli *interface) {
+void hello_callback(ccli *interface, ccli_table *options) {
   ccli_echo_color(interface, COLOR_GREEN, "Hello!");
+  int number;
+  bool boolean;
+  if (ccli_table_get_int(options, "--number", &number)) {
+    ccli_echo_color(interface, COLOR_YELLOW, "number: %d", number);
+  }
+  if (ccli_table_get_bool(options, "--bool", &boolean)) {
+    ccli_echo_color(interface, COLOR_BLUE, "bool: %s", boolean ? "true" : "false");
+  }
+  if (ccli_table_exists(options, "--flag")) {
+    ccli_echo_color(interface, COLOR_CYAN, "flag exists");
+  }
 }
 
-void hello_setup(ccli *interface) {
-  ccli_command *_hello = ccli_add_command(interface, "hello", hello);
-  ccli_option *_number = ccli_command_add_option(_hello, "--number", NULL, VAL_NUM);
+void hello_command(ccli *interface) {
+  ccli_command *hello = ccli_add_command(interface, "hello", hello_callback);
+  ccli_command_add_option(hello, "--number", NULL, VAL_NUM);
+  ccli_command_add_option(hello, "--string", NULL, VAL_STRING);
+  ccli_command_add_option(hello, "--bool", NULL, VAL_BOOL);
+  ccli_command_add_option(hello, "--flag", NULL, VAL_NULL);
 }
 
 int main(int argc, char **argv) {
   ccli *interface = ccli_init("test_ccli", argc, argv);
-  ccli_set_description(interface, "Some description for a test ccli.");
+  ccli_set_description(interface, "Some description for a command line interface.");
 
-  hello_setup(interface);
+  hello_command(interface);
 
   ccli_run(interface);
 
