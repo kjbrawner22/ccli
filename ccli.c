@@ -8,8 +8,6 @@
 #include "ccli.h"
 
 //TODO:
-// - add pointer for current command and its options to main ccli interface,
-//   then migrate ccli_table_get_* functions to use main interface
 // - command groups (like Click) for subcommands
 // - global options
 
@@ -234,11 +232,11 @@ typedef struct {
   ccli_option *option;
 } table_entry;
 
-struct ccli_table {
+typedef struct {
   table_entry *entries;
   int count;
   int capacity;
-};
+} ccli_table;
 
 void ccli_table_init(ccli_table *table) {
   table->capacity = 0;
@@ -550,6 +548,7 @@ struct ccli {
   FILE *fp;
   command_array commands;
   arg_array *parsed_args;
+  ccli_table *parsed_options;
 };
 
 ccli *ccli_init(char *exeName, int argc, char **argv) {
@@ -561,6 +560,7 @@ ccli *ccli_init(char *exeName, int argc, char **argv) {
   interface->description = NULL;
   interface->fp = stdout;
   interface->parsed_args = NULL;
+  interface->parsed_options = NULL;
   command_array_init(&interface->commands);
   return interface;
 }
@@ -582,6 +582,38 @@ ccli_command *ccli_add_command(ccli *interface, char *command, ccli_command_call
   ccli_command *_command = ccli_command_new(command, callback);
   command_array_add(&interface->commands, _command);
   return _command;
+}
+
+/******************** ccli option retrieval ********************/
+
+bool ccli_option_exists(ccli *interface, char *option) {
+  if (!interface->parsed_options) return false;
+
+  return ccli_table_exists(interface->parsed_options, option);
+}
+
+bool ccli_get_int_option(ccli *interface, char *option, int *value) {
+  if (!interface->parsed_options) return false;
+
+  return ccli_table_get_int(interface->parsed_options, option, value);
+}
+
+bool ccli_get_double_option(ccli *interface, char *option, double *value) {
+  if (!interface->parsed_options) return false;
+
+  return ccli_table_get_double(interface->parsed_options, option, value);
+}
+
+bool ccli_get_bool_option(ccli *interface, char *option, bool *value) {
+  if (!interface->parsed_options) return false;
+
+  return ccli_table_get_bool(interface->parsed_options, option, value);
+}
+
+bool ccli_get_string_option(ccli *interface, char *option, char **value) {
+  if (!interface->parsed_options) return false;
+
+  return ccli_table_get_string(interface->parsed_options, option, value);
 }
 
 /******************** ccli print utilities ********************/
@@ -690,10 +722,6 @@ static void ccli_option_display(ccli *interface, ccli_option *option) {
   }
   */
 
-  if (option->description) {
-    ccli_print_color(interface, COLOR_YELLOW, " -> %s\n", option->description);
-  }
-
   switch (option->type) {
     case VAL_NULL:   break;
     case VAL_NUM:    ccli_print_color(interface, COLOR_CYAN, "=NUMBER"); break;
@@ -702,6 +730,10 @@ static void ccli_option_display(ccli *interface, ccli_option *option) {
     default:
       ccli_option_display(interface, option);
       ccli_error(interface, "invalid value type: '%d'.", option->type);
+  }
+
+  if (option->description) {
+    ccli_print_color(interface, COLOR_YELLOW, " -> %s\n", option->description);
   }
 
   ccli_print(interface, "\n");
@@ -724,6 +756,16 @@ static void ccli_display_options(ccli *interface, ccli_command *command) {
 
 static void ccli_arg_display(ccli *interface, ccli_arg *arg) {
   ccli_print_color(interface, COLOR_YELLOW, "  %s", arg->name);
+
+  switch(arg->type) {
+    case VAL_NUM: ccli_print_color(interface, COLOR_CYAN, " (NUMBER)"); break;
+    case VAL_BOOL: ccli_print_color(interface, COLOR_CYAN, " (BOOLEAN)"); break;
+    case VAL_STRING: ccli_print_color(interface, COLOR_CYAN, " (STRING)"); break;
+    default:
+      // Unreachable
+      ccli_error(interface, "unrecognized value type: '%d'.", arg->type);
+
+  }
 
   if (arg->description) {
     ccli_print_color(interface, COLOR_YELLOW, " -> %s", arg->description);
@@ -981,7 +1023,7 @@ void parse_options(ccli *interface, ccli_command *command) {
          interface->argv[interface->current_arg][0] == '-';
          interface->current_arg++) {
     p_option = parse_option(interface->argv[interface->current_arg]);
-    if (!p_option.name) return;
+    if (!p_option.name) break;
 
     ccli_option *option = NULL;
     // TODO: finish parsing options
@@ -993,6 +1035,8 @@ void parse_options(ccli *interface, ccli_command *command) {
 
     parsed_option_free(&p_option);
   }
+
+  interface->parsed_options = &command->options;
 }
 
 static void parse_arg(ccli *interface, ccli_command *command, ccli_arg *arg, char *value) {
@@ -1067,5 +1111,5 @@ void ccli_run(ccli *interface) {
   parse_options(interface, command);
   parse_args(interface, command);
 
-  command->callback(interface, &command->options);
+  command->callback(interface);
 }
