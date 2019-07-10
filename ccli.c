@@ -547,8 +547,7 @@ struct ccli {
   char *description;
   FILE *fp;
   command_array commands;
-  arg_array *parsed_args;
-  ccli_table *parsed_options;
+  ccli_command *invoked_command;
 };
 
 ccli *ccli_init(char *exeName, int argc, char **argv) {
@@ -559,8 +558,8 @@ ccli *ccli_init(char *exeName, int argc, char **argv) {
   interface->argv = argv;
   interface->description = NULL;
   interface->fp = stdout;
-  interface->parsed_args = NULL;
-  interface->parsed_options = NULL;
+
+  interface->invoked_command = NULL;
   command_array_init(&interface->commands);
   return interface;
 }
@@ -578,42 +577,36 @@ void ccli_set_description(ccli *interface, char *description) {
   interface->description = description;
 }
 
-ccli_command *ccli_add_command(ccli *interface, char *command, ccli_command_callback callback) {
-  ccli_command *_command = ccli_command_new(command, callback);
-  command_array_add(&interface->commands, _command);
-  return _command;
-}
-
 /******************** ccli option retrieval ********************/
 
 bool ccli_option_exists(ccli *interface, char *option) {
-  if (!interface->parsed_options) return false;
+  if (!interface->invoked_command) return false;
 
-  return ccli_table_exists(interface->parsed_options, option);
+  return ccli_table_exists(&interface->invoked_command->options, option);
 }
 
 bool ccli_get_int_option(ccli *interface, char *option, int *value) {
-  if (!interface->parsed_options) return false;
+  if (!interface->invoked_command) return false;
 
-  return ccli_table_get_int(interface->parsed_options, option, value);
+  return ccli_table_get_int(&interface->invoked_command->options, option, value);
 }
 
 bool ccli_get_double_option(ccli *interface, char *option, double *value) {
-  if (!interface->parsed_options) return false;
+  if (!interface->invoked_command) return false;
 
-  return ccli_table_get_double(interface->parsed_options, option, value);
+  return ccli_table_get_double(&interface->invoked_command->options, option, value);
 }
 
 bool ccli_get_bool_option(ccli *interface, char *option, bool *value) {
-  if (!interface->parsed_options) return false;
+  if (!interface->invoked_command) return false;
 
-  return ccli_table_get_bool(interface->parsed_options, option, value);
+  return ccli_table_get_bool(&interface->invoked_command->options, option, value);
 }
 
 bool ccli_get_string_option(ccli *interface, char *option, char **value) {
-  if (!interface->parsed_options) return false;
+  if (!interface->invoked_command) return false;
 
-  return ccli_table_get_string(interface->parsed_options, option, value);
+  return ccli_table_get_string(&interface->invoked_command->options, option, value);
 }
 
 /******************** ccli print utilities ********************/
@@ -843,17 +836,17 @@ static void ccli_display(ccli *interface) {
 /******************** ccli_arg retrieval ********************/
 
 static void check_valid_arg_index(ccli *interface, int index) {
-  if (!interface->parsed_args) {
-    ccli_error(interface, "No arguments specified in command.");
-  } else if (interface->parsed_args->size <= index) {
-    ccli_error(interface, "invalid arg index: max is %d, but you used %d.", interface->parsed_args->size - 1, index);
+  if (!interface->invoked_command) {
+    ccli_error(interface, "No command has been invoked yet.");
+  } else if (interface->invoked_command->args.size <= index) {
+    ccli_error(interface, "invalid arg index: max is %d, but you used %d.", interface->invoked_command->args.size - 1, index);
   }
 }
 
 int ccli_get_int_arg(ccli *interface, int index) {
   check_valid_arg_index(interface, index);
 
-  ccli_value value = interface->parsed_args->args[index]->value;
+  ccli_value value = interface->invoked_command->args.args[index]->value;
   if (IS_NUM(value)) return AS_INT(value);
   else ccli_error(interface, "argument at index %d isn't a number.", index);
 }
@@ -861,7 +854,7 @@ int ccli_get_int_arg(ccli *interface, int index) {
 double ccli_get_double_arg(ccli *interface, int index) {
   check_valid_arg_index(interface, index);
 
-  ccli_value value = interface->parsed_args->args[index]->value;
+  ccli_value value = interface->invoked_command->args.args[index]->value;
   if (IS_NUM(value)) return AS_DOUBLE(value);
   else ccli_error(interface, "argument at index %d isn't a number.", index);
 }
@@ -869,7 +862,7 @@ double ccli_get_double_arg(ccli *interface, int index) {
 bool ccli_get_bool_arg(ccli *interface, int index) {
   check_valid_arg_index(interface, index);
 
-  ccli_value value = interface->parsed_args->args[index]->value;
+  ccli_value value = interface->invoked_command->args.args[index]->value;
   if (IS_BOOL(value)) return AS_BOOL(value);
   else ccli_error(interface, "argument at index %d isn't a boolean.", index);
 }
@@ -877,12 +870,21 @@ bool ccli_get_bool_arg(ccli *interface, int index) {
 char *ccli_get_string_arg(ccli *interface, int index) {
   check_valid_arg_index(interface, index);
 
-  ccli_value value = interface->parsed_args->args[index]->value;
+  ccli_value value = interface->invoked_command->args.args[index]->value;
   if (IS_STRING(value)) return AS_STRING(value);
   else ccli_error(interface, "argument at index %d isn't a string.", index);
 }
 
 /******************** ccli global interface API ********************/
+
+
+ccli_command *ccli_add_command(ccli *interface, char *command, ccli_command_callback callback) {
+  ccli_command *_command = ccli_command_new(command, callback);
+  ccli_command_add_option(_command, "--help", NULL, VAL_NULL);
+
+  command_array_add(&interface->commands, _command);
+  return _command;
+}
 
 void ccli_help(ccli *interface, ccli_command *command) {
   if (!command) {
@@ -1023,7 +1025,7 @@ void parse_options(ccli *interface, ccli_command *command) {
          interface->argv[interface->current_arg][0] == '-';
          interface->current_arg++) {
     p_option = parse_option(interface->argv[interface->current_arg]);
-    if (!p_option.name) break;
+    if (!p_option.name) return;
 
     ccli_option *option = NULL;
     // TODO: finish parsing options
@@ -1035,8 +1037,6 @@ void parse_options(ccli *interface, ccli_command *command) {
 
     parsed_option_free(&p_option);
   }
-
-  interface->parsed_options = &command->options;
 }
 
 static void parse_arg(ccli *interface, ccli_command *command, ccli_arg *arg, char *value) {
@@ -1090,8 +1090,6 @@ static void parse_args(ccli *interface, ccli_command *command) {
     ccli_error(interface, "command requires %d arguments, but %d were specified.",
                command->args.size, num_ccli_args);
   }
-
-  interface->parsed_args = &command->args;
 }
 
 void ccli_run(ccli *interface) {
@@ -1108,7 +1106,14 @@ void ccli_run(ccli *interface) {
     return;
   }
 
+  interface->invoked_command = command;
   parse_options(interface, command);
+
+  if (ccli_option_exists(interface, "--help")) {
+    ccli_detailed_command_display(interface, interface->invoked_command);
+    return;
+  }
+
   parse_args(interface, command);
 
   command->callback(interface);
