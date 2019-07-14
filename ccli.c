@@ -504,6 +504,27 @@ ccli_option *ccli_command_add_option(ccli_command *command, char *double_dash_op
   return option;
 }
 
+//TODO: global options
+ccli_option *ccli_add_number_option(ccli *interface, ccli_command *command,
+                                    char *double_dash_option, char *single_dash_option) {
+  return ccli_command_add_option(command, double_dash_option, single_dash_option, VAL_NUM);
+}
+
+ccli_option *ccli_add_bool_option(ccli *interface, ccli_command *command,
+                                    char *double_dash_option, char *single_dash_option) {
+  return ccli_command_add_option(command, double_dash_option, single_dash_option, VAL_BOOL);
+}
+
+ccli_option *ccli_add_string_option(ccli *interface, ccli_command *command,
+                                    char *double_dash_option, char *single_dash_option) {
+  return ccli_command_add_option(command, double_dash_option, single_dash_option, VAL_STRING);
+}
+
+ccli_option *ccli_add_empty_option(ccli *interface, ccli_command *command,
+                                    char *double_dash_option, char *single_dash_option) {
+  return ccli_command_add_option(command, double_dash_option, single_dash_option, VAL_NULL);
+}
+
 /********** command_array **********/
 
 typedef struct {

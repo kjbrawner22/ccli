@@ -58,11 +58,14 @@ ccli_arg *ccli_command_add_number_arg(ccli_command *command, char *name);
 ccli_arg *ccli_command_add_bool_arg(ccli_command *command, char *name);
 ccli_arg *ccli_command_add_string_arg(ccli_command *command, char *name);
 void ccli_arg_set_description(ccli_arg *arg, char *description);
-//TODO: replace with functions for each value type, rather than exposing the enumeration.
-//      reduces possibility for errors and makes the interface a little cleaner.
-//      downside is more distinct function calls.
-ccli_option *ccli_command_add_option(ccli_command *command, char *double_dash_option,
-                               char *single_dash_option, ccli_value_type type);
+ccli_option *ccli_add_number_option(ccli *interface, ccli_command *command,
+                                    char *double_dash_option, char *single_dash_option);
+ccli_option *ccli_add_bool_option(ccli *interface, ccli_command *command,
+                                    char *double_dash_option, char *single_dash_option);
+ccli_option *ccli_add_string_option(ccli *interface, ccli_command *command,
+                                    char *double_dash_option, char *single_dash_option);
+ccli_option *ccli_add_empty_option(ccli *interface, ccli_command *command,
+                                    char *double_dash_option, char *single_dash_option);
 void ccli_option_set_description(ccli_option *option, char *description);
 void ccli_option_set_default_number(ccli_option *option, double value);
 void ccli_option_set_default_bool(ccli_option *option, bool value);
