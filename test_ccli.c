@@ -27,7 +27,8 @@ void hello_command(ccli *interface) {
 
   ccli_option *number = ccli_add_number_option(interface, hello, "--number", NULL);
   ccli_option_set_default_number(number, 3);
-  ccli_add_string_option(interface, hello, "--string", NULL);
+  ccli_option *string = ccli_add_string_option(interface, hello, "--string", NULL);
+  ccli_option_set_default_string(string, "default string");
   ccli_add_bool_option(interface, hello, "--bool", NULL);
   ccli_add_empty_option(interface, hello, "--flag", NULL);
 

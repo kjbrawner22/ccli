@@ -13,13 +13,6 @@ typedef enum {
   COLOR_CYAN
 } ccli_color;
 
-typedef enum {
-  VAL_NULL,
-  VAL_NUM,
-  VAL_BOOL,
-  VAL_STRING
-} ccli_value_type;
-
 typedef struct ccli         ccli;
 typedef struct ccli_command ccli_command;
 typedef struct ccli_arg     ccli_arg;
