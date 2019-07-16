@@ -623,7 +623,7 @@ static command_hierarchy *command_hierarchy_new(ccli_command *command) {
 }
 
 // free the current pointer and everything before it
-static command_hierarchy_free(command_hierarchy *hierarchy) {
+static void command_hierarchy_free(command_hierarchy *hierarchy) {
   if (!hierarchy) return;
 
   command_hierarchy *prev = hierarchy->prev;
