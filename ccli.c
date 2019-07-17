@@ -1163,8 +1163,8 @@ static void parse_args(ccli *interface, ccli_command *command) {
   }
 }
 
-static void parse_command(ccli *interface) {
-
+static void parse(ccli *interface) {
+  // TODO: parse argv in recursive form
 }
 
 void ccli_run(ccli *interface) {
@@ -1183,7 +1183,8 @@ void ccli_run(ccli *interface) {
 
   interface->invoked_command = command;
   parse_options(interface, command);
-
+  // parse(interface);
+  
   if (ccli_option_exists(interface, "--help")) {
     ccli_detailed_command_display(interface, command);
     return;
