@@ -1163,8 +1163,15 @@ static void parse_args(ccli *interface, ccli_command *command) {
   }
 }
 
+static bool isAtEnd(ccli *interface) {
+  return interface->current_arg >= interface->argc;
+}
+
 static void parse(ccli *interface) {
   // TODO: parse argv in recursive form
+  while (!isAtEnd(interface)) {
+    // Do something
+  }
 }
 
 void ccli_run(ccli *interface) {
