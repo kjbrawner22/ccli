@@ -50,7 +50,6 @@ static void _error(const char *func, const char *format, ...) {
   vfprintf(stderr, format, args);
   fputc('\n', stderr);
   va_end(args);
-  exit(1);
 }
 
 #define error(format, args...) (_error(__FUNCTION__, format, ## args))
@@ -649,19 +648,26 @@ struct ccli {
   FILE *fp;
   command_array commands;
   ccli_command *invoked_command;
+  command_hierarchy *invoked_commands;
+  bool parse_error;
 };
 
-ccli *ccli_init(char *exeName, int argc, char **argv) {
+ccli *ccli_init(int argc, char **argv) {
+  if (!argv) {
+    return NULL;
+  }
+
   ccli *interface = malloc(sizeof(ccli));
-  interface->exeName = exeName;
+  interface->exeName = argv[0];
   interface->argc = argc;
   interface->current_arg = 1;
   interface->argv = argv;
   interface->description = NULL;
   interface->fp = stdout;
-
   interface->invoked_command = NULL;
   command_array_init(&interface->commands);
+  interface->invoked_commands = NULL;
+  interface->parse_error = false;
   return interface;
 }
 
@@ -853,7 +859,7 @@ static void ccli_display_args(ccli *interface, ccli_command *command) {
 }
 
 static void ccli_detailed_command_display(ccli *interface, ccli_command *command) {
-  ccli_print_color(interface, COLOR_YELLOW, "Usage: ./%s %s [OPTIONS]", interface->exeName, command->command);
+  ccli_print_color(interface, COLOR_YELLOW, "Usage: %s %s [OPTIONS]", interface->exeName, command->command);
 
   for (int i = 0; i < command->args.size; i++) {
     ccli_print_color(interface, COLOR_YELLOW, " <%s>", command->args.args[i]->name);
@@ -886,7 +892,7 @@ static void ccli_display_commands(ccli *interface) {
 }
 
 static void ccli_usage(ccli *interface) {
-  ccli_echo_color(interface, COLOR_YELLOW, "Usage: ./%s [command] [options]\n", interface->exeName);
+  ccli_echo_color(interface, COLOR_YELLOW, "Usage: %s [command] [options]\n", interface->exeName);
 }
 
 static void ccli_display(ccli *interface) {
@@ -967,17 +973,6 @@ void ccli_help(ccli *interface, ccli_command *command) {
   ccli_command_display(interface, command);
 }
 
-static ccli_command *get_command(ccli *interface) {
-  for (int i = 0; i < interface->commands.size; i++) {
-    if (!strcmp(interface->argv[1], interface->commands.commands[i]->command)) {
-      interface->current_arg++;
-      return interface->commands.commands[i];
-    }
-  }
-
-  return NULL;
-}
-
 typedef struct {
   char *name;
   char *val;
@@ -1025,153 +1020,43 @@ bool strtobool(char *value) {
   return (!strcasecmp(value, "true") || !strcasecmp(value, "t"));
 }
 
-void set_option_value(ccli *interface, ccli_command *command, ccli_option *option, char *name, char *value) {
-  if (!value) {
-    if (option->type == VAL_NULL) {
-      option->value = BOOL_VAL(true);
-      return;
-    } else {
-      ccli_detailed_command_display(interface, command);
-      ccli_runtime_error(interface, "missing option parameter: '%s'.", name);
-    }
-  }
+/******************** parsing ********************/
 
-  switch (option->type) {
-    case VAL_NULL: {
-      ccli_detailed_command_display(interface, command);
-      ccli_runtime_error(interface, "option doesn't take parameter: '%s=%s'.", name, value);
-    }
-    case VAL_BOOL: {
-      if (is_bool(value)) {
-        option->value = BOOL_VAL(strtobool(value));
-      } else {
-        ccli_detailed_command_display(interface, command);
-        ccli_runtime_error(interface, "invalid boolean: '%s'.", value);
-      }
-      break;
-    }
-    case VAL_NUM: {
-      if (is_number(value)) {
-        option->value = NUM_VAL(strtod(value, NULL));
-      } else {
-        ccli_detailed_command_display(interface, command);
-        ccli_runtime_error(interface, "invalid number: '%s'.", value);
-      }
-      break;
-    }
-    case VAL_STRING: {
-      option->value = STRING_VAL(value);
-      break;
-    }
-    default:
-      ccli_runtime_error(interface, "unrecognized value type: %d\n", option->type);
-      // TODO: handle this more gracefully?
-  }
-}
-
-parsed_option parse_option(char *arg) {
-  if (arg[0] != '-') return parsed_option_new(NULL, NULL);
-
-  int name_len = 0;
-
-  // TODO: handle short options
-  name_len++; name_len++;
-
-  while (arg[name_len] != '\0' && arg[name_len] != '=') {
-    name_len++;
-  }
-
-  if (arg[name_len] == '=') {
-    return parsed_option_new(copy_chars(arg, name_len), &arg[name_len + 1]);
-  } else {
-    return parsed_option_new(copy_chars(arg, name_len), NULL);
-  }
-}
-
-#undef parsed_option_new
-
-void parse_options(ccli *interface, ccli_command *command) {
-  parsed_option p_option;
-  for (; interface->current_arg < interface->argc &&
-         interface->argv[interface->current_arg][0] == '-';
-         interface->current_arg++) {
-    p_option = parse_option(interface->argv[interface->current_arg]);
-    if (!p_option.name) return;
-
-    ccli_option *option = NULL;
-    // TODO: finish parsing options
-    table_string *string = ccli_table_find_string(&command->options, p_option.name);
-    if (string && ccli_table_get(&command->options, string, &option)) {
-      // option was used
-      set_option_value(interface, command, option, p_option.name, p_option.val);
-    }
-
-    parsed_option_free(&p_option);
-  }
-}
-
-static void parse_arg(ccli *interface, ccli_command *command, ccli_arg *arg, char *value) {
-  switch (arg->type) {
-    case VAL_NUM: {
-      if (is_number(value)) {
-        arg->value = NUM_VAL(strtod(value, NULL));
-      } else {
-        ccli_detailed_command_display(interface, command);
-        ccli_runtime_error(interface, "invalid number: '%s'.", value);
-      }
-      break;
-    }
-    case VAL_BOOL: {
-      if (is_bool(value)) {
-        arg->value = BOOL_VAL(strtobool(value));
-      } else {
-        ccli_detailed_command_display(interface, command);
-        ccli_runtime_error(interface, "invalid boolean: '%s'.", value);
-      }
-      break;
-    }
-    case VAL_STRING: {
-      arg->value = STRING_VAL(value);
-      break;
-    }
-    default: {
-      // Should be unreachable
-      ccli_detailed_command_display(interface, command);
-      ccli_runtime_error(interface, "invalid value type: %d.", arg->type);
-      break;
-    }
-  }
-}
-
-static void parse_args(ccli *interface, ccli_command *command) {
-  // short-circuit for commands with no arguments
-  if (command->args.size == 0) return;
-
-  int num_ccli_args = 0;
-  for (; interface->current_arg < interface->argc && num_ccli_args < command->args.size;
-         interface->current_arg++, num_ccli_args++) {
-    ccli_arg *arg = command->args.args[num_ccli_args];
-    char *value = interface->argv[interface->current_arg];
-    parse_arg(interface, command, arg, value);
-  }
-
-  if (num_ccli_args < command->args.size) {
-    // arguments are required
-    ccli_detailed_command_display(interface, command);
-    ccli_runtime_error(interface, "command requires %d arguments, but %d were specified.",
-               command->args.size, num_ccli_args);
-  }
-}
-
-static bool isAtEnd(ccli *interface) {
+static bool parse_end(ccli *interface) {
   return interface->current_arg >= interface->argc;
 }
 
-static void parse(ccli *interface) {
-  // TODO: parse argv in recursive form
-  while (!isAtEnd(interface)) {
-    // Do something
+static void option(ccli *interface, char *current) {
+  if (!interface->invoked_commands) {
+    // TODO: global options
+    error("No global options yet.");
+    interface->parse_error = true;
+    return;
   }
+
+  command_hierarchy *h = interface->invoked_commands;
+}
+
+static void command(ccli *interface, char *current) {
+  if (interface->invoked_commands) {
+    
+  }
+}
+
+// returns true if parsing succeeded.
+static bool parse(ccli *interface) {
+  // TODO: parse argv in recursive form
+  while (!parse_end(interface)) {
+    if (interface->parse_error) break;
+    char *current = interface->argv[interface->current_arg];
+    if (current[0] == '-') {
+      option(interface, current);
+    }
+
+    interface->current_arg++;
+  }
+
+  return !interface->parse_error;
 }
 
 void ccli_run(ccli *interface) {
@@ -1180,24 +1065,9 @@ void ccli_run(ccli *interface) {
     return;
   }
 
-  ccli_command *command = get_command(interface);
-  if (!command) {
-    ccli_echo_color(interface, COLOR_RED, "Error: Unrecognized command -> '%s'\n", interface->argv[1]);
-    ccli_display_commands(interface);
-    ccli_print(interface, "\n");
+  if (!parse(interface)) {
     return;
   }
 
-  interface->invoked_command = command;
-  parse_options(interface, command);
-  // parse(interface);
-  
-  if (ccli_option_exists(interface, "--help")) {
-    ccli_detailed_command_display(interface, command);
-    return;
-  }
-
-  parse_args(interface, command);
-
-  interface->invoked_command->callback(interface);
+  // TODO: command callback
 }

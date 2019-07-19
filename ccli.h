@@ -20,7 +20,7 @@ typedef struct ccli_option  ccli_option;
 
 typedef void (*ccli_command_callback)(ccli *interface);
 
-ccli *ccli_init(char *exeName, int argc, char **argv);
+ccli *ccli_init(int argc, char **argv);
 void ccli_free(ccli *interface);
 void ccli_run(ccli *interface);
 void ccli_set_description(ccli *interface, char *description);

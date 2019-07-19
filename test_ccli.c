@@ -46,7 +46,7 @@ void goodbye_command(ccli *interface) {
 }
 
 int main(int argc, char **argv) {
-  ccli *interface = ccli_init("test_ccli", argc, argv);
+  ccli *interface = ccli_init(argc, argv);
   ccli_set_description(interface, "Some description for a command line interface.");
 
   hello_command(interface);
