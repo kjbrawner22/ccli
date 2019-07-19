@@ -52,7 +52,11 @@ static void _error(const char *func, const char *format, ...) {
   va_end(args);
 }
 
-#define error(format, args...) (_error(__FUNCTION__, format, ## args))
+#define error(format, args...)             \
+  do {                                     \
+    _error(__FUNCTION__, format, ## args); \
+    exit(1);                               \
+  } while (false)
 
 /******************** ccli_iterator ********************/
 
@@ -632,9 +636,11 @@ static void command_hierarchy_free(command_hierarchy *hierarchy) {
 
 static command_hierarchy *
 command_hierarchy_add(command_hierarchy *hierarchy, ccli_command *command) {
-  hierarchy->next = command_hierarchy_new(command);
-  hierarchy->next->prev = hierarchy;
-  return hierarchy->next;
+  command_hierarchy *next = command_hierarchy_new(command);
+  if (hierarchy) hierarchy->next = next;
+
+  next->prev = hierarchy;
+  return next;
 }
 
 /******************** ccli - main interface ********************/
@@ -673,6 +679,7 @@ ccli *ccli_init(int argc, char **argv) {
 
 void ccli_free(ccli *interface) {
   command_array_free(&interface->commands);
+  command_hierarchy_free(interface->invoked_commands);
   free(interface);
 }
 
@@ -779,7 +786,7 @@ void ccli_echo_color(ccli *interface, ccli_color color, const char *format, ...)
   do {                                                      \
     ccli_print_color(interface, COLOR_RED, "Error: ");      \
     ccli_echo_color(interface, COLOR_RED, format, ## args); \
-    exit(1);                                                \
+    interface->parse_error = true;                          \
   } while (false)
 
 static void ccli_option_display(ccli *interface, ccli_option *option) {
@@ -892,7 +899,7 @@ static void ccli_display_commands(ccli *interface) {
 }
 
 static void ccli_usage(ccli *interface) {
-  ccli_echo_color(interface, COLOR_YELLOW, "Usage: %s [command] [options]\n", interface->exeName);
+  ccli_echo_color(interface, COLOR_YELLOW, "Usage: %s <command> [options]\n", interface->exeName);
 }
 
 static void ccli_display(ccli *interface) {
@@ -912,44 +919,44 @@ static void ccli_display(ccli *interface) {
 
 /******************** ccli_arg retrieval ********************/
 
-static void check_valid_arg_index(ccli *interface, int index) {
+static void check_valid_arg(ccli *interface, int index) {
   if (!interface->invoked_command) {
-    ccli_runtime_error(interface, "No command has been invoked yet.");
+    error("No command has been invoked yet.");
   } else if (interface->invoked_command->args.size <= index) {
-    ccli_runtime_error(interface, "invalid arg index: max is %d, but you used %d.", interface->invoked_command->args.size - 1, index);
+    error("invalid arg index: max is %d, but you used %d.", interface->invoked_command->args.size - 1, index);
   }
 }
 
 int ccli_get_int_arg(ccli *interface, int index) {
-  check_valid_arg_index(interface, index);
+  check_valid_arg(interface, index);
 
   ccli_value value = interface->invoked_command->args.args[index]->value;
   if (IS_NUM(value)) return AS_INT(value);
-  else ccli_runtime_error(interface, "argument at index %d isn't a number.", index);
+  else error("argument at index %d isn't a number.", index);
 }
 
 double ccli_get_double_arg(ccli *interface, int index) {
-  check_valid_arg_index(interface, index);
+  check_valid_arg(interface, index);
 
   ccli_value value = interface->invoked_command->args.args[index]->value;
   if (IS_NUM(value)) return AS_DOUBLE(value);
-  else ccli_runtime_error(interface, "argument at index %d isn't a number.", index);
+  else error("argument at index %d isn't a number.", index);
 }
 
 bool ccli_get_bool_arg(ccli *interface, int index) {
-  check_valid_arg_index(interface, index);
+  check_valid_arg(interface, index);
 
   ccli_value value = interface->invoked_command->args.args[index]->value;
   if (IS_BOOL(value)) return AS_BOOL(value);
-  else ccli_runtime_error(interface, "argument at index %d isn't a boolean.", index);
+  else error("argument at index %d isn't a boolean.", index);
 }
 
 char *ccli_get_string_arg(ccli *interface, int index) {
-  check_valid_arg_index(interface, index);
+  check_valid_arg(interface, index);
 
   ccli_value value = interface->invoked_command->args.args[index]->value;
   if (IS_STRING(value)) return AS_STRING(value);
-  else ccli_runtime_error(interface, "argument at index %d isn't a string.", index);
+  else error("argument at index %d isn't a string.", index);
 }
 
 /******************** ccli global interface API ********************/
@@ -971,18 +978,6 @@ void ccli_help(ccli *interface, ccli_command *command) {
   }
 
   ccli_command_display(interface, command);
-}
-
-typedef struct {
-  char *name;
-  char *val;
-} parsed_option;
-
-// these helpers are mainly for readability
-#define parsed_option_new(arg, val) ((parsed_option){ arg, val })
-
-static void parsed_option_free(parsed_option *option) {
-  free(option->name);
 }
 
 static char *copy_chars(char *chars, int length) {
@@ -1037,15 +1032,34 @@ static void option(ccli *interface, char *current) {
   command_hierarchy *h = interface->invoked_commands;
 }
 
+static void global_command(ccli *interface) {
+  char *name = interface->argv[interface->current_arg];
+  for (int i = 0; i < interface->commands.size; i++) {
+    ccli_command *command = interface->commands.commands[i];
+    if (!strcmp(command->command, name)) {
+      interface->invoked_commands = command_hierarchy_add(NULL, command);
+      interface->invoked_command = command;
+      interface->current_arg++;
+      return;
+    }
+  }
+
+  ccli_display(interface);
+  ccli_runtime_error(interface, "%s is not a command.", name);
+}
+
 static void command(ccli *interface, char *current) {
   if (interface->invoked_commands) {
-    
+
   }
 }
 
 // returns true if parsing succeeded.
 static bool parse(ccli *interface) {
   // TODO: parse argv in recursive form
+  if (parse_end(interface)) ccli_display(interface);
+
+  global_command(interface);
   while (!parse_end(interface)) {
     if (interface->parse_error) break;
     char *current = interface->argv[interface->current_arg];
@@ -1070,4 +1084,5 @@ void ccli_run(ccli *interface) {
   }
 
   // TODO: command callback
+  interface->invoked_command->callback(interface);
 }
