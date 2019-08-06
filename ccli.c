@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdio.h>
 
 static void *reallocate(void *prev, size_t oldSize, size_t newSize) {
   if (!newSize) {
@@ -21,6 +22,8 @@ static void *reallocate(void *prev, size_t oldSize, size_t newSize) {
   sizeof(type) * count)
 #define FREE_ARRAY(type, pointer, oldCount) \
   reallocate(pointer, sizeof(type) * oldCount, 0)
+#define FREE(type, pointer) \
+  reallocate(pointer, sizeof(type), 0)
 
 typedef enum {
   OBJ_STRING,
@@ -29,29 +32,39 @@ typedef enum {
   OBJ_OPTION
 } obj_type;
 
-typedef struct ccli_obj {
+typedef struct {
   obj_type type;
 } ccli_obj;
 
-#define ALLOCATE_OBJ(objectType, type) \
-  (type *)allocateObj(objectType, sizeof(type))
-#define FREE_OBJ(obj, objectType) \
-  freeObj(obj, objectType)
+typedef enum {
+  VAL_NULL,
+  VAL_NUM,
+  VAL_BOOL,
+  VAL_OBJ
+} ccli_value_type;
 
-static ccli_obj *allocateObj(obj_type type, size_t size) {
-  ccli_obj *obj = reallocate(NULL, 0, size);
-  obj->type = type;
-  return obj;
-}
+typedef struct {
+  ccli_value_type type;
+  union {
+    double number;
+    bool boolean;
+    ccli_obj *object;
+  } as;
+} ccli_value;
 
-static void freeObj(void *obj, obj_type type) {
-  switch (type) {
-    case OBJ_STRING: free(obj);
-    default:
-      printf("Object type not implemented yet.\n");
-      exit(1);
-  }
-}
+#define IS_NULL(value) ((value).type == VAL_NULL)
+#define IS_NUM(value)  ((value).type == VAL_NUM)
+#define IS_BOOL(value) ((value).type == VAL_BOOL)
+#define IS_OBJ(value)  ((value).type == VAL_OBJ)
+
+#define AS_NUM(value)  ((value).as.number)
+#define AS_BOOL(value) ((value).as.boolean)
+#define AS_OBJ(value)  ((value).as.object)
+
+#define NULL_VAL        ((ccli_value){ VAL_NULL, { .number = 0                 } })
+#define NUM_VAL(value)  ((ccli_value){ VAL_NUM,  { .number = value             } })
+#define BOOL_VAL(value) ((ccli_value){ VAL_BOOL, { .boolean = value            } })
+#define OBJ_VAL(value)  ((ccli_value){ VAL_OBJ,  { .object = (ccli_obj *)value } })
 
 typedef struct {
   ccli_obj obj;
@@ -59,6 +72,67 @@ typedef struct {
   int length;
   uint32_t hash;
 } ccli_string;
+
+typedef struct {
+  ccli_string *name;
+  char *description;
+  ccli_command_callback callback;
+} ccli_command;
+
+typedef struct {
+  ccli_string *name;
+  char *description;
+  ccli_value_type type;
+  ccli_value value;
+} ccli_argument;
+
+typedef struct {
+  ccli_string *name;
+  char *description;
+  ccli_value_type type;
+  ccli_value value;
+} ccli_option;
+
+#define OBJ_TYPE(value) (AS_OBJ(value)->type)
+
+#define IS_COMMAND(value) isObjType(value, OBJ_COMMAND)
+#define IS_STRING(value)  isObjType(value, OBJ_STRING)
+
+#define AS_COMMAND(value) ((ccli_command *)AS_OBJ(value))
+#define AS_STRING(value)  ((ccli_string *)AS_OBJ(value))
+#define AS_CSTRING(value) (((ccli_string *)AS_OBJ(value))->chars)
+
+static inline bool isObjType(ccli_value value, obj_type type) {
+  return IS_OBJ(value) && OBJ_TYPE(value) == type;
+}
+
+#define ALLOCATE_OBJ(objectType, type) \
+  (type *)allocateObj(objectType, sizeof(type))
+
+static ccli_obj *allocateObj(obj_type type, size_t size) {
+  ccli_obj *obj = reallocate(NULL, 0, size);
+  obj->type = type;
+  return obj;
+}
+
+static void freeObj(ccli_obj *obj) {
+  switch (obj->type) {
+    case OBJ_STRING: {
+      ccli_string *string = (ccli_string *)obj;
+      FREE_ARRAY(char, string->chars, string->length + 1);
+      FREE(ccli_string, string);
+      break;
+    }
+    case OBJ_COMMAND: {
+      ccli_command *command = (ccli_command *)obj;
+      FREE(ccli_command, command);
+      break;
+    }
+    default:
+      printf("Object type not implemented yet.\n");
+      break;
+  }
+}
 
 static uint32_t hashString(const char *key, int length) {
   uint32_t hash = 2166136261u;
@@ -80,35 +154,32 @@ static ccli_string *allocateString(char *chars, int length,
   return string;
 }
 
-typedef enum {
-  VAL_NULL,
-  VAL_NUM,
-  VAL_BOOL,
-  VAL_OBJ
-} value_type;
+static ccli_command *allocateCommand(ccli_string *name, ccli_command_callback callback) {
+  ccli_command *command = ALLOCATE_OBJ(OBJ_COMMAND, ccli_command);
+  command->name = name;
+  command->description = NULL;
+  command->callback = callback;
+  command->description = NULL;
+  return command;
+}
 
-typedef struct {
-  value_type type;
-  union {
-    double number;
-    bool boolean;
-    ccli_obj *object;
-  } as;
-} ccli_value;
+static ccli_argument *allocateArgument(ccli_string *name, ccli_value_type type) {
+  ccli_argument *argument = ALLOCATE_OBJ(OBJ_ARGUMENT, ccli_argument);
+  argument->name = name;
+  argument->description = NULL;
+  argument->type = type;
+  argument->value = NULL_VAL;
+  return argument;
+}
 
-#define IS_NULL(value) ((value).type == VAL_NULL)
-#define IS_NUM(value)  ((value).type == VAL_NUM)
-#define IS_BOOL(value) ((value).type == VAL_BOOL)
-#define IS_OBJ(value)  ((value).type == VAL_OBJ)
-
-#define AS_NUM(value)  ((value).as.number)
-#define AS_BOOL(value) ((value).as.boolean)
-#define AS_OBJ(value)  ((value).as.obj)
-
-#define NULL_VAL        ((ccli_value){ VAL_NULL, { .number = 0                 } })
-#define NUM_VAL(value)  ((ccli_value){ VAL_NUM,  { .number = value             } })
-#define BOOL_VAL(value) ((ccli_value){ VAL_BOOL, { .boolean = value            } })
-#define OBJ_VAL(value)  ((ccli_value){ VAL_OBJ,  { .object = (ccli_obj *)value } })
+static ccli_option *allocateOption(ccli_string *name, ccli_value_type type) {
+  ccli_option *option = ALLOCATE_OBJ(OBJ_OPTION, ccli_option);
+  option->name = name;
+  option->description = NULL;
+  option->type = type;
+  option->value = NULL_VAL;
+  return option;
+}
 
 /******************** ccli_table ********************/
 
@@ -140,9 +211,11 @@ static void freeTable(ccli_table *table) {
 
     if (!entry->key) continue;
 
+    freeObj((ccli_obj *)entry->key);
+
     ccli_value value = entry->value;
-    if (value.type == VAL_OBJ) {
-      FREE_OBJ(value.as.object, value.type);
+    if (IS_OBJ(value)) {
+      freeObj(value.as.object);
     }
   }
 
@@ -178,7 +251,7 @@ static void adjustCapacity(ccli_table *table, int capacity) {
   for (int i = 0; i < table->capacity; i++) {
     table_entry *entry = &table->entries[i];
     // Disregard empty entries
-    if (entry->key == NULL) continue;
+    if (!entry->key) continue;
 
     table_entry *dest = findEntry(entries, capacity, entry->key);
     dest->key = entry->key;
@@ -194,7 +267,7 @@ bool getTable(ccli_table *table, ccli_string *key, ccli_value *value) {
   if (table->entries == NULL) return false;
 
   table_entry *entry = findEntry(table->entries, table->capacity, key);
-  if (entry->key == NULL) return false;
+  if (!entry->key) return false;
 
   *value = entry->value;
   return true;
@@ -208,7 +281,7 @@ bool setTable(ccli_table *table, ccli_string *key, ccli_value value) {
 
   table_entry *entry = findEntry(table->entries, table->capacity, key);
 
-  bool isNewKey = (entry->key == NULL);
+  bool isNewKey = (!entry->key);
   // Only increment the count if the entry isn't a tombstone
   if (isNewKey) table->count++;
 
@@ -218,7 +291,7 @@ bool setTable(ccli_table *table, ccli_string *key, ccli_value value) {
 }
 
 ccli_string *tableFindString(ccli_table *table, const char *chars, int length, uint32_t hash) {
-  if (table->entries == NULL) return NULL;
+  if (!table->entries) return NULL;
 
   uint32_t index = hash % table->capacity;
 
@@ -241,13 +314,97 @@ ccli_string *tableFindString(ccli_table *table, const char *chars, int length, u
 /******************** ccli - main interface ********************/
 
 struct ccli {
-  FILE *fp;
   char *description;
   int argc;
-  char **argv;
+  int currentArg;
+  ccli_string **argv;
   ccli_table strings;
-  ccli_obj *objects;
+  ccli_table commands;
+  ccli_command *invokedCommand;
 };
+
+static ccli_string *copyString(ccli *interface, char *chars, int length) {
+  uint32_t hash = hashString(chars, length);
+
+  ccli_string *interned = tableFindString(&interface->strings, chars, length, hash);
+  if (interned) return interned;
+
+  char *heapChars = ALLOCATE(char, length + 1);
+  memcpy(heapChars, chars, length);
+  heapChars[length] = '\0';
+  
+  ccli_string *string = allocateString(heapChars, length, hash);
+  setTable(&interface->strings, string, NULL_VAL);
+  return string;
+}
+
+ccli *newCCLI(int argc, char **argv) {
+  ccli *interface = malloc(sizeof(ccli));
+  interface->argc = argc;
+  interface->currentArg = 1;
+  interface->description = NULL;
+  interface->invokedCommand = NULL;
+  initTable(&interface->commands);
+  initTable(&interface->strings);
+
+  interface->argv = malloc(sizeof(ccli_string *) * argc);
+  for (int i = 0; i < argc; i++) {
+    interface->argv[i] = copyString(interface, argv[i], strlen(argv[i]));
+  }
+
+  return interface;
+}
+
+void freeCCLI(ccli *interface) {
+  freeTable(&interface->strings);
+  free(interface);
+}
+
+void setDescriptionCCLI(ccli *interface, char *description) {
+  interface->description = description;
+}
+
+ccli_command *addCommandCCLI(ccli *interface, char *name, ccli_command_callback callback) {
+  ccli_string *nameString = copyString(interface, name, strlen(name));
+  ccli_command *command = allocateCommand(nameString, callback);
+  setTable(&interface->commands, nameString, OBJ_VAL(command));
+  return command;
+}
+
+/* main runCCLI entrypoint and helpers */
+
+bool isAtEnd(ccli *interface) {
+  return interface->currentArg >= interface->argc;
+}
+
+void printGlobalHelp(ccli *interface) {
+  printf("Usage: %s <command> [options]\n\n", interface->argv[0]->chars);
+
+  if (interface->description) {
+    printf("  %s\n\n", interface->description);
+  }
+}
+
+void parseCommand(ccli *interface) {
+  ccli_string *key = interface->argv[interface->currentArg++];
+  ccli_value value;
+  if (getTable(&interface->commands, key, &value) && IS_COMMAND(value)) {
+    interface->invokedCommand = AS_COMMAND(value);
+    printf("found command\n");
+  }
+}
+
+void runCCLI(ccli *interface) {
+  if (interface->argc <= 0) {
+    return;
+  } else if (interface->argc == 1) {
+    printGlobalHelp(interface);
+  }
+
+  while (!isAtEnd(interface)) {
+    parseCommand(interface);
+  }
+}
 
 /*************************************************/
 /******************** TESTING ********************/
@@ -289,6 +446,8 @@ static void endTest(const char *function) {
     endTest(#function);   \
   } while (false)
 
+/******************** Tests go here ********************/
+
 static void valueTest() {
   ccli_value value = NUM_VAL(3);
   assert(IS_NUM(value));
@@ -301,6 +460,15 @@ static void valueTest() {
   value = NULL_VAL;
   assert(IS_NULL(value));
   assert(!value.as.number);
+  
+  char *chars = "test string.";
+  int length = strlen(chars);
+  ccli_string *string = copyString(chars, length);
+  value = OBJ_VAL(string);
+  assert(IS_OBJ(value));
+  assert(value.as.object->type == OBJ_STRING);
+
+  freeObj(value.as.object);
 }
 
 static void tableTest() {
@@ -308,7 +476,7 @@ static void tableTest() {
   initTable(&table);
   assert(!table.capacity);
 
-  ccli_string *string = allocateString("hello", 5, hashString("hello", 5));
+  ccli_string *string = copyString("hello", 5);
   ccli_value value = NULL_VAL;
 
   setTable(&table, string, NUM_VAL(21));
@@ -316,7 +484,32 @@ static void tableTest() {
   assert(AS_NUM(value) == 21);
   assert(tableFindString(&table, "hello", 5, string->hash));
 
+  string = copyString("hi", 2);
+  setTable(&table, string, BOOL_VAL(true));
+  assert(!strcmp(string->chars, "hi"));
+  assert(getTable(&table, string, &value));
+  assert(IS_BOOL(value));
+  assert(AS_BOOL(value));
+
+  assert(table.capacity == 8);
+  assert(table.count == 2);
+
+  ccli_string *string2 = copyString("not in table.", 13);
+  assert(!getTable(&table, string2, &value));
+  assert(IS_BOOL(value));
+  assert(AS_BOOL(value));
+
+  ccli_string *string3 = tableFindString(&table, string->chars, string->length, string->hash);
+
+  assert(string == string3);
+
   freeTable(&table);
+
+  assert(table.count == 0);
+  assert(table.capacity == 0);
+  assert(!table.entries);
+
+  assert(!getTable(&table, string, &value));
 }
 
 int main() {

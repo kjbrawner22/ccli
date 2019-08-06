@@ -1,7 +1,7 @@
 #ifndef ccli_h
 #define ccli_h
 
-#define CCLI_TESTS 1
+//#define CCLI_TESTS
 
 #include <stdio.h>
 #include <stdbool.h>
@@ -19,10 +19,9 @@ typedef struct ccli ccli;
 
 typedef void (*ccli_command_callback)(ccli *interface);
 
-ccli *ccliNew(int argc, char **argv);
-void ccliFree(ccli *interface);
-void ccliRun(ccli *interface);
-void ccliSetDescription(ccli *interface, char *description);
-void ccliSetOutputStream(ccli *interface, FILE *fp);
+ccli *newCCLI(int argc, char **argv);
+void freeCCLI(ccli *interface);
+void runCCLI(ccli *interface);
+void setDescriptionCCLI(ccli *interface, char *description);
 
 #endif
