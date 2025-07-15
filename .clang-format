@@ -1,0 +1,49 @@
+BasedOnStyle:    Google 
+AccessModifierOffset: -2
+AlignAfterOpenBracket: BlockIndent
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignEscapedNewlines: Right
+AlignOperands:   true
+AlignTrailingComments: true
+AllowAllParametersOfDeclarationOnNextLine: false
+AllowShortBlocksOnASingleLine: true
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: true
+AllowShortLoopsOnASingleLine: true
+AlwaysBreakAfterDefinitionReturnType: None
+AlwaysBreakAfterReturnType: None
+AlwaysBreakBeforeMultilineStrings: false
+BinPackArguments: false
+BinPackParameters: false
+BreakBeforeBinaryOperators: NonAssignment
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterClass: true
+  AfterControlStatement: false
+  AfterEnum: false
+  AfterFunction: true
+  AfterNamespace: false
+  AfterObjCDeclaration: true
+  AfterStruct: false
+  AfterUnion: false
+  BeforeCatch: false
+  BeforeElse: false
+  IndentBraces: false
+  SplitEmptyNamespace: false
+BreakBeforeTernaryOperators: true
+ColumnLimit:     120
+ContinuationIndentWidth: 2
+IndentWidth:     2
+DerivePointerAlignment: false
+PointerAlignment: Left
+PenaltyReturnTypeOnItsOwnLine: 1000000
+PenaltyBreakComment: 1000000000
+TabWidth:        2
+UseTab:          Never
+JavaScriptQuotes: Leave
+SpacesInParentheses: false
+SpaceBeforeParens: ControlStatements
+SpacesBeforeTrailingComments: 1
+
