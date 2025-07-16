@@ -33,7 +33,7 @@ BraceWrapping:
   IndentBraces: false
   SplitEmptyNamespace: false
 BreakBeforeTernaryOperators: true
-ColumnLimit:     120
+ColumnLimit:     100
 ContinuationIndentWidth: 2
 IndentWidth:     2
 DerivePointerAlignment: false

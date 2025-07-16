@@ -1,5 +1,6 @@
 #pragma once
 
+#include <argp.h>
 #include <stdbool.h>
 
 /**************************************************
@@ -14,18 +15,6 @@ These structures define the main components of the CCLI library, including comma
  *
  */
 typedef struct Ccli Ccli;
-
-/**
- * @brief Represents a dynamic value type used by CCLI
- *
- */
-typedef struct CcliValue CcliValue;
-
-/**
- * @brief Represents a command node in the CCLI
- *
- */
-typedef struct CcliCommand CcliCommand;
 
 /**
  * @brief Represents a command line argument
@@ -76,21 +65,17 @@ Command Management API
 **************************************************/
 
 /**
- * @brief Insert a command into the CCLI interface
+ * @brief Represents a command in the CCLI
  *
- * @param iface
- * @param command
  */
-CcliCommand* ccli_command_new_top_level(Ccli* parent);
+typedef struct CcliCommand CcliCommand;
 
 /**
- * @brief Add a subcommand to a parent command
+ * @brief Create a new command object
  *
- * @param parent
- * @param command
  * @return CcliCommand*
  */
-CcliCommand* ccli_command_new_subcommand(CcliCommand* parent);
+CcliCommand* ccli_new_command();
 
 /**
  * @brief Set description for a command
@@ -100,7 +85,17 @@ CcliCommand* ccli_command_new_subcommand(CcliCommand* parent);
  */
 void ccli_command_set_description(CcliCommand* command, const char* description);
 
-void ccli_command_new_option(CcliCommand* command, const char* optionName);
+/**
+ * @brief
+ *
+ * @param command
+ * @param optionName
+ */
+void ccli_command_new_bool_option(
+  CcliCommand* command,
+  const char* longOption,
+  const char* shortOption
+);
 
 /**************************************************
 
@@ -129,4 +124,9 @@ void ccli_echo(Ccli* interface, const char* format, ...);
  * @param format
  * @param ...
  */
-__attribute__((format(printf, 3, 4))) void ccli_echo_color(Ccli* interface, CcliColor color, const char* format, ...);
+__attribute__((format(printf, 3, 4))) void ccli_echo_color(
+  Ccli* interface,
+  CcliColor color,
+  const char* format,
+  ...
+);
